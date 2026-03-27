@@ -75,6 +75,12 @@ class ResearchRecordOut(ResearchRecord):
     paper_id: int
 
 
+# ── Tracking status schema ────────────────────────────────────────────────────
+class TrackingStatusUpdate(BaseModel):
+    tracking_status: str
+    remarks: Optional[str] = None
+
+
 # ── Root ──────────────────────────────────────────────────────────────────────
 @app.get("/")
 def root():
@@ -119,6 +125,9 @@ async def create_evaluation(
         "turnitin_report_name":        turnitin_report.filename,
         "grammarly_report_name":       grammarly_report.filename,
         "journal_conference_info_name": journal_conference_info.filename,
+        # Tracking fields — default on submission
+        "tracking_status": "Submitted",
+        "remarks":         None,
     }
     eval_records.append(record)
     eval_counter["id"] += 1
@@ -182,6 +191,23 @@ async def update_evaluation(
 
             eval_records[i] = updated
             return updated
+    raise HTTPException(status_code=404, detail="Record not found")
+
+
+# ── Tracking status update ────────────────────────────────────────────────────
+@app.put("/evaluations/{re_id}/status")
+def update_evaluation_status(re_id: int, payload: TrackingStatusUpdate):
+    valid_statuses = ["Submitted", "Under Review", "For Revision", "Approved", "Rejected"]
+    if payload.tracking_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+    for i, r in enumerate(eval_records):
+        if r["re_id"] == re_id:
+            eval_records[i] = {
+                **r,
+                "tracking_status": payload.tracking_status,
+                "remarks":         payload.remarks,
+            }
+            return eval_records[i]
     raise HTTPException(status_code=404, detail="Record not found")
 
 

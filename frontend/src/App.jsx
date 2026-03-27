@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ResearchEvaluation  from "./ResearchEvaluation";
 import EvaluationDashboard from "./EvaluationDashboard";
+import EvaluationTracking  from "./Evaluationtracking";
 import ResearchDatabase    from "./ResearchDatabase";
 import ResearchDashboard   from "./DatabaseDashboard";
 
@@ -10,6 +11,7 @@ const NAV = [
     items: [
       { key: "eval-form",      label: "Submit Evaluation", icon: "📝" },
       { key: "eval-dashboard", label: "Evaluation Records", icon: "📋" },
+      { key: "eval-tracking",  label: "Tracking",          icon: "📡" },
     ],
   },
   {
@@ -27,6 +29,7 @@ export default function App() {
   const renderPage = () => {
     if (page === "eval-form")      return <ResearchEvaluation  onNavigate={setPage} />;
     if (page === "eval-dashboard") return <EvaluationDashboard onNavigate={setPage} />;
+    if (page === "eval-tracking")  return <EvaluationTracking  onNavigate={setPage} />;
     if (page === "db-form")        return <ResearchDatabase    onNavigate={setPage} />;
     if (page === "db-dashboard")   return <ResearchDashboard   onNavigate={setPage} />;
     return null;

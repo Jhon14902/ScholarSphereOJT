@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react"; // Added useRef here
 
 const API = "http://localhost:8000";
 
@@ -56,6 +56,22 @@ const FILE_FIELDS = [
   "authorship_form","evaluation_form","full_paper",
   "turnitin_report","grammarly_report","journal_conference_info",
 ];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Returns today's date as YYYY-MM-DD (local time) */
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+/** Returns true if YYYY-MM-DD string falls on Sat or Sun */
+function isWeekend(dateStr) {
+  if (!dateStr) return false;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const day = new Date(y, m - 1, d).getDay(); // 0=Sun, 6=Sat
+  return day === 0 || day === 6;
+}
 
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 const iStyle = {
@@ -213,11 +229,48 @@ function FileUploadField({ label, fieldKey, file, onFileChange, referenceUrl }) 
   );
 }
 
+// ── Schedule Preview Badge ────────────────────────────────────────────────────
+function ScheduleBadge({ date, time }) {
+  if (!date && !time) return null;
+
+  const formattedDate = date
+    ? new Date(...date.split("-").map((v,i) => i===1 ? v-1 : v))
+        .toLocaleDateString("en-PH", { weekday:"long", year:"numeric", month:"long", day:"numeric" })
+    : null;
+
+  const formattedTime = time
+    ? new Date(`1970-01-01T${time}`).toLocaleTimeString("en-PH", { hour:"numeric", minute:"2-digit", hour12:true })
+    : null;
+
+  return (
+    <div style={{
+      marginTop:16, background:"#fffbea", border:"1.5px solid #F5C400",
+      borderRadius:6, padding:"12px 16px", display:"flex", alignItems:"center", gap:12,
+    }}>
+      <span style={{ fontSize:22 }}>🗓️</span>
+      <div>
+        <div style={{ fontSize:10, fontWeight:700, letterSpacing:"2px",
+          textTransform:"uppercase", color:"#9e7a00", marginBottom:2 }}>
+          Scheduled Appointment
+        </div>
+        <div style={{ fontSize:14, fontWeight:700, color:"#0d0d0d" }}>
+          {formattedDate || "—"}{formattedTime ? ` · ${formattedTime}` : ""}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ResearchEvaluation({ onNavigate }) {
+  // References for functional icons
+  const dateInputRef = useRef(null);
+  const timeInputRef = useRef(null);
+
   const [form, setF] = useState({
     author_id:"", campus_id:"", college_id:"", department_id:"",
     school_year_id:"", semester_id:"", title_of_research:"",
+    appointment_date:"", appointment_time:"",
   });
   const [files, setFiles] = useState({
     authorship_form:null, evaluation_form:null, full_paper:null,
@@ -231,9 +284,20 @@ export default function ResearchEvaluation({ onNavigate }) {
   const setFile = (k, v) => setFiles(f => ({ ...f, [k]: v }));
   const depts   = DEPTS[form.college_id] || [];
 
+  const weekendError = isWeekend(form.appointment_date);
+
   const handleSubmit = async () => {
     for (const [k, lbl] of REQUIRED_TEXT) {
       if (!form[k]) { setStatus({ type:"error", msg:`"${lbl}" is required.` }); return; }
+    }
+    if (!form.appointment_date) {
+      setStatus({ type:"error", msg:'"Appointment Date" is required.' }); return;
+    }
+    if (isWeekend(form.appointment_date)) {
+      setStatus({ type:"error", msg:"Appointments cannot be scheduled on weekends. Please choose a weekday." }); return;
+    }
+    if (!form.appointment_time) {
+      setStatus({ type:"error", msg:'"Appointment Time" is required.' }); return;
     }
     for (const k of FILE_FIELDS) {
       if (!files[k]) {
@@ -250,7 +314,8 @@ export default function ResearchEvaluation({ onNavigate }) {
       if (!res.ok) throw new Error((await res.json()).detail);
       setStatus({ type:"success", msg:"Evaluation submitted successfully!" });
       setF({ author_id:"", campus_id:"", college_id:"", department_id:"",
-        school_year_id:"", semester_id:"", title_of_research:"" });
+        school_year_id:"", semester_id:"", title_of_research:"",
+        appointment_date:"", appointment_time:"" });
       setFiles({ authorship_form:null, evaluation_form:null, full_paper:null,
         turnitin_report:null, grammarly_report:null, journal_conference_info:null });
       setTimeout(() => onNavigate("eval-dashboard"), 1200);
@@ -274,7 +339,7 @@ export default function ResearchEvaluation({ onNavigate }) {
             textTransform:"uppercase", opacity:.7, marginBottom:3 }}>Research Evaluation</div>
           <h1 style={{ fontFamily:"'Barlow Condensed',sans-serif", color:"#fff",
             fontSize:28, fontWeight:900, textTransform:"uppercase", letterSpacing:"-0.5px" }}>
-            Submit Evaluation Record
+            Application For Research Evaluation
           </h1>
         </div>
         <button onClick={() => onNavigate("eval-dashboard")} style={{
@@ -336,7 +401,74 @@ export default function ResearchEvaluation({ onNavigate }) {
           </Row>
         </Section>
 
-        {/* ── Section 3: Document Uploads ── */}
+        {/* ── Section 3: Evaluation Schedule ── */}
+        <Section title="Evaluation Schedule">
+          <div style={{ marginBottom:10, fontSize:12, color:"#7a6000",
+            background:"#fffbea", border:"1px solid #f5e57a", borderRadius:4,
+            padding:"8px 12px", display:"flex", alignItems:"center", gap:7 }}>
+            📅 <span>Select your preferred date and time for the evaluation appointment.
+              <strong> Weekends are not available.</strong></span>
+          </div>
+
+          <Row>
+            {/* Date picker */}
+            <F label="Appointment Date" req>
+              <div style={{ position:"relative" }}>
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  value={form.appointment_date}
+                  min={todayStr()}
+                  onChange={e => set("appointment_date", e.target.value)}
+                  style={{
+                    ...iStyle,
+                    borderColor: weekendError ? "#e53935" : "#e0e0e0",
+                    paddingRight:36,
+                  }}
+                />
+                <span 
+                  onClick={() => dateInputRef.current?.showPicker()}
+                  style={{ position:"absolute", right:12, top:"50%",
+                  transform:"translateY(-50%)", cursor:"pointer", fontSize:16 }}>
+                  📅
+                </span>
+              </div>
+              {weekendError && (
+                <div style={{ fontSize:11, color:"#e53935", marginTop:5,
+                  display:"flex", alignItems:"center", gap:4 }}>
+                  ⚠️ Weekends are not available. Please choose a weekday (Mon–Fri).
+                </div>
+              )}
+            </F>
+
+            {/* Time picker */}
+            <F label="Appointment Time" req>
+              <div style={{ position:"relative" }}>
+                <input
+                  ref={timeInputRef}
+                  type="time"
+                  value={form.appointment_time}
+                  onChange={e => set("appointment_time", e.target.value)}
+                  style={{ ...iStyle, paddingRight:36 }}
+                />
+                <span 
+                  onClick={() => timeInputRef.current?.showPicker()}
+                  style={{ position:"absolute", right:12, top:"50%",
+                  transform:"translateY(-50%)", cursor:"pointer", fontSize:16 }}>
+                  🕒
+                </span>
+              </div>
+              <div style={{ fontSize:11, color:"#9e9e9e", marginTop:5 }}>
+                Use your preferred time for the evaluation appointment.
+              </div>
+            </F>
+          </Row>
+
+          {/* Live preview badge */}
+          <ScheduleBadge date={!weekendError ? form.appointment_date : ""} time={form.appointment_time} />
+        </Section>
+
+        {/* ── Section 4: Document Uploads ── */}
         <Section title="Document Uploads">
           <Row>
             <FileUploadField label="Authorship Form" fieldKey="authorship_form"
@@ -367,7 +499,7 @@ export default function ResearchEvaluation({ onNavigate }) {
             fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, fontWeight:800,
             letterSpacing:"3px", textTransform:"uppercase", cursor:"pointer", borderRadius:4,
           }}>
-            {loading ? "Submitting…" : "Submit Evaluation"}
+            {loading ? "Submitting…" : "Submit Application"}
           </button>
           {status.msg && (
             <div style={{
